@@ -10,19 +10,18 @@ import {
   Settings,
   ShieldAlert,
   Search,
-  Filter,
   Download,
   CheckCircle2,
   AlertCircle,
-  FileSpreadsheet,
   Lock,
   LogOut,
   Mail,
   KeyRound,
   ArrowRight,
-  ShieldCheck,
-  Building2,
-  Calendar,
+  Users,
+  ChevronRight,
+  Clock,
+  Sparkles,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -43,26 +42,69 @@ const SUPABASE_URL = 'https://hsmsrblpfqrjnpouuowf.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_9kncZz2ycR7D0nVH_y36bw_r3frcW80';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const AUTHORIZED_EMAILS = [
-  'vinicsantana2008@gmail.com',
-  'raiannifilgueiras@gmail.com',
+const MONTH_TABS = [
+  { name: 'Janeiro', short: 'Jan' },
+  { name: 'Fevereiro', short: 'Fev' },
+  { name: 'Março', short: 'Mar' },
+  { name: 'Abril', short: 'Abr' },
+  { name: 'Maio', short: 'Mai' },
+  { name: 'Junho', short: 'Jun' },
+  { name: 'Julho', short: 'Jul' },
+  { name: 'Agosto', short: 'Ago' },
+  { name: 'Setembro', short: 'Set' },
+  { name: 'Outubro', short: 'Out' },
+  { name: 'Novembro', short: 'Nov', isCurrent: true },
+  { name: 'Dezembro', short: 'Dez' },
 ];
-
-const DEFAULT_SHEET_URL =
-  'https://docs.google.com/spreadsheets/d/1Xl2d057aR2h6hV2kM6E9W7z3_hSj7V5z4/edit';
 
 interface Transacao {
   id: string;
-  data: string;
+  mes: string;
+  dia?: number | string;
   descricao: string;
+  detalhe?: string;
   categoria: string;
   tipo: 'Entrada' | 'Saida';
   valor: number;
   status: string;
-  contraparte?: string;
 }
 
-const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#64748b'];
+interface MonthSummary {
+  mes: string;
+  entradas: number;
+  saidas: number;
+  saldo: number;
+  divisaoSocio: number;
+  transacoes: Transacao[];
+}
+
+const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#64748b', '#f97316'];
+
+function categorizeExpense(desc: string): string {
+  const d = desc.toLowerCase();
+  if (d.includes('vivo') || d.includes('vvn') || d.includes('zaptus') || d.includes('stevo') || d.includes('whatsapp') || d.includes('wpp')) {
+    return 'Telefonia & WhatsApp';
+  }
+  if (d.includes('supabase') || d.includes('google') || d.includes('clickup') || d.includes('canva') || d.includes('chatgpt') || d.includes('openai') || d.includes('rebrand') || d.includes('api')) {
+    return 'SaaS & Ferramentas';
+  }
+  if (d.includes('hospedagem') || d.includes('vps') || d.includes('servidor') || d.includes('n8n') || d.includes('dominio')) {
+    return 'Infraestrutura';
+  }
+  if (d.includes('iof') || d.includes('taxa') || d.includes('imposto')) {
+    return 'Taxas & Impostos';
+  }
+  if (d.includes('folha') || d.includes('estagi') || d.includes('salario') || d.includes('vendedor')) {
+    return 'Equipe & Pessoas';
+  }
+  if (d.includes('curso') || d.includes('compliance')) {
+    return 'Treinamento & Cursos';
+  }
+  if (d.includes('suprimentos')) {
+    return 'Operacional';
+  }
+  return 'Despesas Diversas';
+}
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -72,21 +114,19 @@ export default function App() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Dashboard Data states
+  // Financial Data
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sheetUrl, setSheetUrl] = useState<string>(() => {
-    return localStorage.getItem('orbita_financeiro_sheet_url') || DEFAULT_SHEET_URL;
-  });
-  const [transacoes, setTransacoes] = useState<Transacao[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState<string>('Novembro');
+  const [monthsData, setMonthsData] = useState<Map<string, MonthSummary>>(new Map());
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [tipoFilter, setTipoFilter] = useState<'Todos' | 'Entrada' | 'Saida'>('Todos');
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [newSheetUrl, setNewSheetUrl] = useState('');
+  const [serverDenied, setServerDenied] = useState(false);
+  const [spreadsheetUrl, setSpreadsheetUrl] = useState<string | null>(null);
 
-  // 1. Auth Listener
+  // Auth Listener
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
@@ -95,18 +135,15 @@ export default function App() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      setServerDenied(false);
       setAuthLoading(false);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const isAuthorized = useMemo(() => {
-    if (!user || !user.email) return false;
-    return AUTHORIZED_EMAILS.includes(user.email.toLowerCase().trim());
-  }, [user]);
+  const isAuthorized = Boolean(user && !serverDenied);
 
-  // Handle Login
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
@@ -130,256 +167,165 @@ export default function App() {
     setUser(null);
   };
 
-  // 2. Load Config from Supabase
-  const loadSheetConfig = useCallback(async () => {
-    try {
-      const { data, error: cfgErr } = await supabase
-        .from('configuracoes_sistema')
-        .select('valor')
-        .eq('chave', 'financeiro_planilha_url')
-        .maybeSingle();
-
-      if (!cfgErr && data?.valor) {
-        setSheetUrl(data.valor);
-        localStorage.setItem('orbita_financeiro_sheet_url', data.valor);
-      }
-    } catch (e) {
-      console.warn('Erro ao carregar configuracoes_sistema:', e);
-    }
-  }, []);
-
-  // 3. Fetch & Parse Google Sheets
-  const fetchSheetData = useCallback(async (targetUrl?: string) => {
-    const urlToUse = targetUrl || sheetUrl;
-    if (!urlToUse) return;
-
+  // Sincronização via Supabase Edge Function autenticada (zero segredos no browser)
+  const fetchAllMonthsData = useCallback(async () => {
     setError(null);
     try {
-      const match = urlToUse.match(/\/d\/([a-zA-Z0-9-_]+)/);
-      if (!match) {
-        throw new Error('Link do Google Sheets inválido. Certifique-se de usar a URL completa da planilha.');
-      }
-      const spreadsheetId = match[1];
+      const newMap = new Map<string, MonthSummary>();
+      const { data, error: fnErr } = await supabase.functions.invoke('financeiro-sync');
 
-      let gidMatch = urlToUse.match(/[#&?]gid=([0-9]+)/);
-      const gid = gidMatch ? gidMatch[1] : '0';
-
-      const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&gid=${gid}`;
-      const res = await fetch(gvizUrl);
-      if (!res.ok) throw new Error(`Falha ao conectar com o Google Sheets (${res.status})`);
-
-      const text = await res.text();
-      const jsonStart = text.indexOf('{');
-      const jsonEnd = text.lastIndexOf('}');
-      if (jsonStart === -1 || jsonEnd === -1) {
-        throw new Error('Formato retornado pelo Google Sheets não reconhecido.');
+      if (fnErr) {
+        const status = (fnErr as { context?: { status?: number } })?.context?.status;
+        if (status === 401 || status === 403) {
+          setServerDenied(true);
+          return;
+        }
+        throw new Error(fnErr.message || 'Erro ao sincronizar financeiro');
       }
 
-      const rawJson = JSON.parse(text.substring(jsonStart, jsonEnd + 1));
-      const cols = rawJson.table.cols.map((c: any) => (c.label || c.id || '').toLowerCase().trim());
-      const rows = rawJson.table.rows;
+      if (!data?.months) {
+        throw new Error('Resposta inválida da Edge Function financeiro-sync');
+      }
 
-      const findColIdx = (aliases: string[]) => {
-        return cols.findIndex((col: string) => aliases.some((alias) => col.includes(alias)));
-      };
+      if (data.spreadsheetUrl) {
+        setSpreadsheetUrl(data.spreadsheetUrl);
+      }
 
-      const dateIdx = findColIdx(['data', 'dt', 'date', 'vencimento', 'competência']);
-      const descIdx = findColIdx(['descri', 'histórico', 'item', 'lançamento', 'detalhe']);
-      const catIdx = findColIdx(['categoria', 'classifica', 'plano', 'grupo']);
-      const tipoIdx = findColIdx(['tipo', 'natureza', 'operacao', 'e/s']);
-      const valIdx = findColIdx(['valor', 'total', 'quantia', 'r$', 'saldo']);
-      const statusIdx = findColIdx(['status', 'situacao', 'pago', 'efetivado']);
-      const contIdx = findColIdx(['cliente', 'fornecedor', 'contraparte', 'favorecido', 'origem', 'destino']);
+      (data.months as MonthSummary[]).forEach((m) => {
+        const transacoes = (m.transacoes || []).map((t) => ({
+          ...t,
+          categoria: t.tipo === 'Saida' ? categorizeExpense(t.descricao) : t.categoria,
+        }));
+        newMap.set(m.mes, {
+          ...m,
+          divisaoSocio: m.saldo > 0 ? m.saldo / 2 : 0,
+          transacoes,
+        });
+      });
 
-      const parsed: Transacao[] = rows
-        .map((row: any, rIdx: number) => {
-          const c = row.c || [];
-          const getVal = (idx: number) => {
-            if (idx === -1 || !c[idx]) return '';
-            return c[idx].v !== null && c[idx].v !== undefined ? c[idx].v : (c[idx].f || '');
-          };
-
-          const rawDate = getVal(dateIdx !== -1 ? dateIdx : 0);
-          const rawDesc = String(getVal(descIdx !== -1 ? descIdx : 1) || `Lançamento #${rIdx + 1}`);
-          const rawCat = String(getVal(catIdx !== -1 ? catIdx : 2) || 'Geral');
-          let rawTipo = String(getVal(tipoIdx !== -1 ? tipoIdx : 3)).toLowerCase();
-          const rawVal = getVal(valIdx !== -1 ? valIdx : 4);
-          const rawStatus = String(getVal(statusIdx !== -1 ? statusIdx : 5) || 'Confirmado');
-          const rawCont = contIdx !== -1 ? String(getVal(contIdx)) : undefined;
-
-          let numVal = 0;
-          if (typeof rawVal === 'number') {
-            numVal = rawVal;
-          } else if (rawVal) {
-            const cleanStr = String(rawVal).replace(/[R$\s]/g, '').replace(/\./g, '').replace(',', '.');
-            numVal = parseFloat(cleanStr) || 0;
-          }
-
-          let tipo: 'Entrada' | 'Saida' = 'Entrada';
-          if (rawTipo.includes('sai') || rawTipo.includes('desp') || rawTipo.includes('deb') || numVal < 0) {
-            tipo = 'Saida';
-          } else if (rawTipo.includes('ent') || rawTipo.includes('rec') || rawTipo.includes('cred')) {
-            tipo = 'Entrada';
-          } else {
-            tipo = numVal < 0 ? 'Saida' : 'Entrada';
-          }
-
-          let dateStr = '';
-          if (rawDate instanceof Date) {
-            dateStr = rawDate.toLocaleDateString('pt-BR');
-          } else if (typeof rawDate === 'string' && rawDate.startsWith('Date(')) {
-            const parts = rawDate.match(/\d+/g);
-            if (parts) {
-              const d = new Date(parseInt(parts[0]), parseInt(parts[1]), parseInt(parts[2]));
-              dateStr = d.toLocaleDateString('pt-BR');
-            }
-          } else {
-            dateStr = String(rawDate || '');
-          }
-
-          return {
-            id: `row-${rIdx}`,
-            data: dateStr,
-            descricao: rawDesc,
-            categoria: rawCat,
-            tipo,
-            valor: Math.abs(numVal),
-            status: rawStatus,
-            contraparte: rawCont,
-          };
-        })
-        .filter((t: Transacao) => t.descricao && t.valor > 0);
-
-      setTransacoes(parsed);
+      setMonthsData(newMap);
       setLastSync(new Date());
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao carregar dados financeiros.';
       console.error('Erro na sincronização:', err);
-      setError(err.message || 'Erro ao carregar dados da planilha.');
+      setError(msg);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [sheetUrl]);
+  }, []);
 
   useEffect(() => {
     if (isAuthorized) {
-      loadSheetConfig();
-      fetchSheetData();
-      const interval = setInterval(() => {
-        fetchSheetData();
-      }, 60000);
+      fetchAllMonthsData();
+      const interval = setInterval(fetchAllMonthsData, 60000);
       return () => clearInterval(interval);
     }
-  }, [isAuthorized, loadSheetConfig, fetchSheetData]);
+  }, [isAuthorized, fetchAllMonthsData]);
 
   const handleManualRefresh = () => {
     setRefreshing(true);
-    fetchSheetData();
+    fetchAllMonthsData();
   };
 
-  const handleSaveSettings = async () => {
-    if (!newSheetUrl.trim()) return;
-    setSheetUrl(newSheetUrl.trim());
-    localStorage.setItem('orbita_financeiro_sheet_url', newSheetUrl.trim());
-
-    try {
-      await supabase.from('configuracoes_sistema').upsert({
-        chave: 'financeiro_planilha_url',
-        valor: newSheetUrl.trim(),
-        descricao: 'URL do Google Sheets com lançamentos da diretoria',
-        atualizado_em: new Date().toISOString(),
-      }, { onConflict: 'chave' });
-    } catch (e) {
-      console.warn('Erro ao salvar configuracao no Supabase:', e);
+  // Dados do Período Selecionado
+  const currentSummary = useMemo(() => {
+    if (selectedMonth === 'TODOS') {
+      let totalEnt = 0;
+      let totalSai = 0;
+      const allTrans: Transacao[] = [];
+      monthsData.forEach((m) => {
+        totalEnt += m.entradas;
+        totalSai += m.saidas;
+        allTrans.push(...m.transacoes);
+      });
+      const saldo = totalEnt - totalSai;
+      return {
+        mes: 'Consolidado Anual',
+        entradas: totalEnt,
+        saidas: totalSai,
+        saldo,
+        divisaoSocio: saldo > 0 ? saldo / 2 : 0,
+        transacoes: allTrans,
+      };
     }
-
-    setIsSettingsOpen(false);
-    setLoading(true);
-    fetchSheetData(newSheetUrl.trim());
-  };
-
-  // Metrics calculation
-  const totalReceitas = useMemo(() => {
-    return transacoes.filter((t) => t.tipo === 'Entrada').reduce((acc, cur) => acc + cur.valor, 0);
-  }, [transacoes]);
-
-  const totalDespesas = useMemo(() => {
-    return transacoes.filter((t) => t.tipo === 'Saida').reduce((acc, cur) => acc + cur.valor, 0);
-  }, [transacoes]);
-
-  const saldoLiquido = useMemo(() => totalReceitas - totalDespesas, [totalReceitas, totalDespesas]);
-  const margemLiquida = useMemo(() => {
-    if (totalReceitas === 0) return 0;
-    return (saldoLiquido / totalReceitas) * 100;
-  }, [totalReceitas, saldoLiquido]);
-
-  // Charts data
-  const monthlyData = useMemo(() => {
-    const map = new Map<string, { mes: string; entradas: number; saidas: number }>();
-    transacoes.forEach((t) => {
-      let mesKey = 'Geral';
-      if (t.data) {
-        const parts = t.data.split('/');
-        if (parts.length >= 2) mesKey = `${parts[1]}/${parts[2] || parts[0]}`;
-        else mesKey = t.data.substring(0, 7);
+    return (
+      monthsData.get(selectedMonth) || {
+        mes: selectedMonth,
+        entradas: 0,
+        saidas: 0,
+        saldo: 0,
+        divisaoSocio: 0,
+        transacoes: [],
       }
-      if (!map.has(mesKey)) {
-        map.set(mesKey, { mes: mesKey, entradas: 0, saidas: 0 });
-      }
-      const entry = map.get(mesKey)!;
-      if (t.tipo === 'Entrada') entry.entradas += t.valor;
-      else entry.saidas += t.valor;
+    );
+  }, [selectedMonth, monthsData]);
+
+  // Gráfico Anual (Todos os meses lado a lado)
+  const annualChartData = useMemo(() => {
+    return MONTH_TABS.map((tab) => {
+      const summary = monthsData.get(tab.name);
+      return {
+        mes: tab.short,
+        entradas: summary?.entradas || 0,
+        saidas: summary?.saidas || 0,
+      };
     });
-    return Array.from(map.values()).slice(-12);
-  }, [transacoes]);
+  }, [monthsData]);
 
+  // Categorias de Despesas do Período
   const categoryData = useMemo(() => {
     const map = new Map<string, number>();
-    transacoes.filter((t) => t.tipo === 'Saida').forEach((t) => {
-      const cat = t.categoria || 'Outros';
-      map.set(cat, (map.get(cat) || 0) + t.valor);
-    });
+    currentSummary.transacoes
+      .filter((t) => t.tipo === 'Saida')
+      .forEach((t) => {
+        map.set(t.categoria, (map.get(t.categoria) || 0) + t.valor);
+      });
     return Array.from(map.entries())
       .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 6);
-  }, [transacoes]);
+      .sort((a, b) => b.value - a.value);
+  }, [currentSummary]);
 
-  // Filtered transactions
+  // Transações Filtradas
   const filteredTransacoes = useMemo(() => {
-    return transacoes.filter((t) => {
+    return currentSummary.transacoes.filter((t) => {
       const matchesSearch =
         t.descricao.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.categoria.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (t.contraparte && t.contraparte.toLowerCase().includes(searchTerm.toLowerCase()));
+        (t.detalhe && t.detalhe.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        t.categoria.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesTipo = tipoFilter === 'Todos' || t.tipo === tipoFilter;
       return matchesSearch && matchesTipo;
     });
-  }, [transacoes, searchTerm, tipoFilter]);
+  }, [currentSummary, searchTerm, tipoFilter]);
+
+  const margemLiquida = useMemo(() => {
+    if (currentSummary.entradas === 0) return 0;
+    return (currentSummary.saldo / currentSummary.entradas) * 100;
+  }, [currentSummary]);
+
+  const formatBRL = (val: number) => {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+  };
 
   const exportCSV = () => {
-    const headers = ['Data', 'Descrição', 'Categoria', 'Tipo', 'Valor (R$)', 'Status', 'Contraparte'];
+    const headers = ['Mês', 'Dia', 'Descrição / Cliente', 'Detalhe / Projeto', 'Categoria', 'Tipo', 'Valor (R$)', 'Status'];
     const rows = filteredTransacoes.map((t) => [
-      t.data,
+      t.mes,
+      t.dia || '',
       `"${t.descricao.replace(/"/g, '""')}"`,
+      `"${(t.detalhe || '').replace(/"/g, '""')}"`,
       `"${t.categoria.replace(/"/g, '""')}"`,
       t.tipo,
       t.valor.toFixed(2),
       t.status,
-      `"${(t.contraparte || '').replace(/"/g, '""')}"`,
     ]);
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `financeiro_orbita_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('href', encodeURI(csvContent));
+    link.setAttribute('download', `financeiro_orbita_${selectedMonth.toLowerCase()}_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  };
-
-  const formatBRL = (val: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   };
 
   // -------------------------------------------------------------
@@ -397,7 +343,7 @@ export default function App() {
   }
 
   // -------------------------------------------------------------
-  // RENDER: Unauthenticated Login
+  // RENDER: Login
   // -------------------------------------------------------------
   if (!user) {
     return (
@@ -429,7 +375,7 @@ export default function App() {
                   value={emailInput}
                   onChange={(e) => setEmailInput(e.target.value)}
                   placeholder="seu-email@gmail.com"
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950 py-3 pl-11 pr-4 text-sm text-white placeholder-slate-600 transition focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full rounded-xl border border-slate-800 bg-slate-950 py-3 pl-11 pr-4 text-sm text-white placeholder-slate-600 transition focus:border-emerald-500 focus:outline-none"
                 />
               </div>
             </div>
@@ -444,7 +390,7 @@ export default function App() {
                   value={passwordInput}
                   onChange={(e) => setPasswordInput(e.target.value)}
                   placeholder="••••••••••••"
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950 py-3 pl-11 pr-4 text-sm text-white placeholder-slate-600 transition focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full rounded-xl border border-slate-800 bg-slate-950 py-3 pl-11 pr-4 text-sm text-white placeholder-slate-600 transition focus:border-emerald-500 focus:outline-none"
                 />
               </div>
             </div>
@@ -452,14 +398,14 @@ export default function App() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="group flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/25 transition hover:brightness-110 active:scale-[0.99] disabled:opacity-50"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/25 transition hover:brightness-110 active:scale-[0.99] disabled:opacity-50"
             >
               {isSubmitting ? (
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
               ) : (
                 <>
                   <span>Entrar no Dashboard</span>
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  <ArrowRight className="h-4 w-4" />
                 </>
               )}
             </button>
@@ -467,7 +413,7 @@ export default function App() {
 
           <div className="flex items-center justify-center gap-2 border-t border-slate-800/80 pt-6 text-xs text-slate-500">
             <Lock className="h-3.5 w-3.5" />
-            <span>Acesso criptografado e auditado</span>
+            <span>Acesso criptografado e restrito à diretoria</span>
           </div>
         </div>
       </div>
@@ -475,7 +421,7 @@ export default function App() {
   }
 
   // -------------------------------------------------------------
-  // RENDER: Access Denied (Unauthorized Email)
+  // RENDER: Access Denied
   // -------------------------------------------------------------
   if (!isAuthorized) {
     return (
@@ -484,18 +430,17 @@ export default function App() {
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-500/10 text-red-400">
             <ShieldAlert className="h-8 w-8" />
           </div>
-          <h2 className="mt-5 text-2xl font-bold text-white">Acesso Executivo Restrito</h2>
+          <h2 className="mt-5 text-2xl font-bold text-white">Acesso Restrito à Diretoria</h2>
           <p className="mt-2 text-sm text-slate-400">
-            Você está conectado como <strong className="text-white">{user.email}</strong>, porém este painel financeiro é restrito exclusivamente aos diretores executivos (<strong className="text-emerald-400">Vinicius Santana</strong> e <strong className="text-emerald-400">Raianni Filgueiras</strong>).
+            Conectado como <strong className="text-white">{user.email}</strong>. Painel financeiro exclusivo para Vinicius Santana e Raianni Filgueiras.
           </p>
-
-          <div className="mt-8 flex justify-center gap-4">
+          <div className="mt-8 flex justify-center">
             <button
               onClick={handleLogout}
-              className="flex items-center gap-2 rounded-xl bg-slate-800 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-700 active:scale-95"
+              className="flex items-center gap-2 rounded-xl bg-slate-800 px-5 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-700"
             >
               <LogOut className="h-4 w-4" />
-              <span>Sair da conta</span>
+              <span>Sair</span>
             </button>
           </div>
         </div>
@@ -504,13 +449,13 @@ export default function App() {
   }
 
   // -------------------------------------------------------------
-  // RENDER: Full Authorized Financial Dashboard
+  // RENDER: Full Executive Dashboard
   // -------------------------------------------------------------
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       {/* Top Navbar */}
-      <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-slate-900/70 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3.5 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-slate-900/80 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 shadow-md shadow-emerald-500/20">
               <DollarSign className="h-6 w-6 text-slate-950 font-black" />
@@ -523,7 +468,7 @@ export default function App() {
                   Tempo Real
                 </span>
               </div>
-              <p className="text-xs text-slate-400">Painel Estratégico da Diretoria</p>
+              <p className="text-xs text-slate-400">Painel Estratégico & DRE da Diretoria</p>
             </div>
           </div>
 
@@ -537,41 +482,31 @@ export default function App() {
             <button
               onClick={handleManualRefresh}
               disabled={refreshing}
-              className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-slate-800 active:scale-95 disabled:opacity-50"
-              title="Atualizar dados agora"
+              className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-slate-800 disabled:opacity-50"
+              title="Atualizar dados da planilha agora"
             >
               <RefreshCw className={`h-4 w-4 text-emerald-400 ${refreshing ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">Atualizar</span>
             </button>
 
-            <button
-              onClick={() => {
-                setNewSheetUrl(sheetUrl);
-                setIsSettingsOpen(true);
-              }}
-              className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-800/60 p-2 text-slate-300 transition hover:bg-slate-800 active:scale-95 sm:px-3"
-              title="Configurar Planilha"
-            >
-              <Settings className="h-4 w-4" />
-              <span className="hidden sm:inline text-xs font-semibold">Configurar</span>
-            </button>
-
-            <a
-              href={sheetUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-800/60 p-2 text-slate-300 transition hover:bg-slate-800 active:scale-95 sm:px-3"
-              title="Abrir Google Sheet"
-            >
-              <ExternalLink className="h-4 w-4" />
-              <span className="hidden sm:inline text-xs font-semibold">Planilha</span>
-            </a>
+            {spreadsheetUrl && (
+              <a
+                href={spreadsheetUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-800/60 p-2 text-slate-300 transition hover:bg-slate-800 sm:px-3"
+                title="Abrir Planilha no Google Sheets"
+              >
+                <ExternalLink className="h-4 w-4" />
+                <span className="hidden sm:inline text-xs font-semibold">Planilha</span>
+              </a>
+            )}
 
             <div className="h-6 w-px bg-slate-800 mx-1" />
 
             <button
               onClick={handleLogout}
-              className="flex items-center gap-1.5 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-400 transition hover:bg-red-500/20 active:scale-95"
+              className="flex items-center gap-1.5 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-400 transition hover:bg-red-500/20"
               title="Encerrar Sessão"
             >
               <LogOut className="h-4 w-4" />
@@ -581,51 +516,79 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
-        {/* Error Alert */}
-        {error && (
-          <div className="flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-300">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 shrink-0 text-amber-400" />
-              <p className="text-sm">{error}</p>
-            </div>
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              className="rounded-lg bg-amber-500/20 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/30"
-            >
-              Ajustar Link
-            </button>
-          </div>
-        )}
+      {/* Main Container */}
+      <main className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+        {/* Month Selector Tabs */}
+        <section className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-none">
+          <button
+            onClick={() => setSelectedMonth('TODOS')}
+            className={`whitespace-nowrap rounded-xl px-4 py-2 text-xs font-semibold transition ${
+              selectedMonth === 'TODOS'
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-lg shadow-emerald-600/20'
+                : 'border border-slate-800 bg-slate-900/60 text-slate-400 hover:text-white hover:bg-slate-800/50'
+            }`}
+          >
+            Ano Todo (Consolidado)
+          </button>
+
+          {MONTH_TABS.map((tab) => {
+            const isSelected = selectedMonth === tab.name;
+            const hasData = monthsData.has(tab.name) && (monthsData.get(tab.name)?.transacoes.length || 0) > 0;
+            return (
+              <button
+                key={tab.name}
+                onClick={() => setSelectedMonth(tab.name)}
+                className={`relative whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-semibold transition ${
+                  isSelected
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                    : 'border border-slate-800/80 bg-slate-900/50 text-slate-400 hover:text-white hover:bg-slate-800/40'
+                }`}
+              >
+                <span>{tab.name}</span>
+                {tab.isCurrent && (
+                  <span className="ml-1.5 rounded-full bg-emerald-500/20 px-1.5 py-0.2 text-[9px] text-emerald-300">
+                    Atual
+                  </span>
+                )}
+                {hasData && !isSelected && (
+                  <span className="ml-1 h-1.5 w-1.5 inline-block rounded-full bg-slate-500" />
+                )}
+              </button>
+            );
+          })}
+        </section>
 
         {/* Top 4 KPI Cards */}
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {/* Card 1: Faturamento */}
           <div className="relative overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 backdrop-blur-sm">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Faturamento Bruto</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Faturamento {selectedMonth === 'TODOS' ? 'Anual' : selectedMonth}
+              </span>
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
                 <TrendingUp className="h-5 w-5" />
               </div>
             </div>
             <div className="mt-3">
-              <h3 className="text-2xl font-bold tracking-tight text-white">{formatBRL(totalReceitas)}</h3>
-              <p className="mt-1 text-xs text-emerald-400/80">Entradas acumuladas no período</p>
+              <h3 className="text-2xl font-bold tracking-tight text-white">{formatBRL(currentSummary.entradas)}</h3>
+              <p className="mt-1 text-xs text-emerald-400/80">Entradas de clientes & projetos</p>
             </div>
           </div>
 
           {/* Card 2: Despesas */}
           <div className="relative overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 backdrop-blur-sm">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Despesas Totais</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Despesas {selectedMonth === 'TODOS' ? 'Anuais' : selectedMonth}
+              </span>
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500/10 text-red-400">
                 <TrendingDown className="h-5 w-5" />
               </div>
             </div>
             <div className="mt-3">
-              <h3 className="text-2xl font-bold tracking-tight text-white">{formatBRL(totalDespesas)}</h3>
-              <p className="mt-1 text-xs text-red-400/80">Saídas e custos operacionais</p>
+              <h3 className="text-2xl font-bold tracking-tight text-white">{formatBRL(currentSummary.saidas)}</h3>
+              <p className="mt-1 text-xs text-red-400/80">Custos, ferramentas & infra</p>
             </div>
           </div>
 
@@ -633,79 +596,79 @@ export default function App() {
           <div className="relative overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 backdrop-blur-sm">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Saldo Líquido</span>
-              <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${saldoLiquido >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+              <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${currentSummary.saldo >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
                 <DollarSign className="h-5 w-5" />
               </div>
             </div>
             <div className="mt-3">
-              <h3 className={`text-2xl font-bold tracking-tight ${saldoLiquido >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {formatBRL(saldoLiquido)}
+              <h3 className={`text-2xl font-bold tracking-tight ${currentSummary.saldo >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {formatBRL(currentSummary.saldo)}
               </h3>
-              <p className="mt-1 text-xs text-slate-400">Resultado final do caixa</p>
+              <p className="mt-1 text-xs text-slate-400">
+                Margem líquida: <span className="font-semibold text-white">{margemLiquida.toFixed(1)}%</span>
+              </p>
             </div>
           </div>
 
-          {/* Card 4: Margem Líquida */}
-          <div className="relative overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 backdrop-blur-sm">
+          {/* Card 4: Divisão por Sócio (50% / 50%) */}
+          <div className="relative overflow-hidden rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/30 via-slate-900/60 to-slate-900/60 p-5 backdrop-blur-sm">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Margem Líquida</span>
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500/10 text-blue-400">
-                <Percent className="h-5 w-5" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-emerald-300">
+                Divisão por Sócio (50%)
+              </span>
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-300">
+                <Users className="h-5 w-5" />
               </div>
             </div>
             <div className="mt-3">
-              <h3 className="text-2xl font-bold tracking-tight text-white">
-                {margemLiquida.toFixed(1)}%
+              <h3 className="text-2xl font-bold tracking-tight text-emerald-400">
+                {formatBRL(currentSummary.divisaoSocio)}
               </h3>
-              <p className="mt-1 text-xs text-slate-400">Rentabilidade sobre o faturamento</p>
+              <p className="mt-1 text-xs text-slate-400">
+                Vinicius: <span className="font-semibold text-emerald-300">{formatBRL(currentSummary.divisaoSocio)}</span> • Raianni: <span className="font-semibold text-emerald-300">{formatBRL(currentSummary.divisaoSocio)}</span>
+              </p>
             </div>
           </div>
         </section>
 
         {/* Charts Grid */}
         <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* BarChart: Fluxo Mensal */}
+          {/* BarChart: Fluxo de Caixa Mensal */}
           <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-6 backdrop-blur-sm lg:col-span-2">
-            <div className="flex items-center justify-between pb-4">
+            <div className="flex items-center justify-between pb-2">
               <div>
-                <h3 className="text-base font-bold text-white">Fluxo de Caixa Mensal</h3>
-                <p className="text-xs text-slate-400">Comparativo de entradas e saídas por competência</p>
+                <h3 className="text-base font-bold text-white">Evolução Mensal (Ano Todo)</h3>
+                <p className="text-xs text-slate-400">Comparativo real de faturamento vs despesas mês a mês</p>
               </div>
             </div>
             <div className="h-72 w-full pt-4">
-              {monthlyData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={monthlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                    <XAxis dataKey="mes" stroke="#64748b" fontSize={11} tickLine={false} />
-                    <YAxis
-                      stroke="#64748b"
-                      fontSize={11}
-                      tickLine={false}
-                      tickFormatter={(val) => `R$${(val / 1000).toFixed(0)}k`}
-                    />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.75rem', color: '#fff' }}
-                      formatter={(val: number) => [formatBRL(val), '']}
-                    />
-                    <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                    <Bar dataKey="entradas" name="Entradas" fill="#10b981" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="saidas" name="Saídas" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex h-full items-center justify-center text-xs text-slate-500">
-                  Carregando dados mensais...
-                </div>
-              )}
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={annualChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                  <XAxis dataKey="mes" stroke="#64748b" fontSize={11} tickLine={false} />
+                  <YAxis
+                    stroke="#64748b"
+                    fontSize={11}
+                    tickLine={false}
+                    tickFormatter={(val) => `R$${(val / 1000).toFixed(0)}k`}
+                  />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.75rem', color: '#fff' }}
+                    formatter={(val: number) => [formatBRL(val), '']}
+                  />
+                  <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                  <Bar dataKey="entradas" name="Faturamento (Entradas)" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="saidas" name="Despesas (Saídas)" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </div>
 
           {/* PieChart: Despesas por Categoria */}
           <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-6 backdrop-blur-sm">
-            <div className="pb-4">
+            <div className="pb-2">
               <h3 className="text-base font-bold text-white">Despesas por Categoria</h3>
-              <p className="text-xs text-slate-400">Principais centros de custo</p>
+              <p className="text-xs text-slate-400">Distribuição de custos em {selectedMonth}</p>
             </div>
             <div className="h-72 w-full pt-4">
               {categoryData.length > 0 ? (
@@ -716,10 +679,10 @@ export default function App() {
                       dataKey="value"
                       nameKey="name"
                       cx="50%"
-                      cy="50%"
-                      outerRadius={80}
-                      innerRadius={45}
-                      paddingAngle={4}
+                      cy="48%"
+                      outerRadius={75}
+                      innerRadius={40}
+                      paddingAngle={3}
                     >
                       {categoryData.map((_, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -729,12 +692,12 @@ export default function App() {
                       contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.75rem', color: '#fff' }}
                       formatter={(val: number) => [formatBRL(val), '']}
                     />
-                    <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                    <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '6px' }} />
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
                 <div className="flex h-full items-center justify-center text-xs text-slate-500">
-                  Sem despesas registradas
+                  Nenhuma despesa registrada para o período selecionado
                 </div>
               )}
             </div>
@@ -745,19 +708,19 @@ export default function App() {
         <section className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-6 backdrop-blur-sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h3 className="text-base font-bold text-white">Extrato de Lançamentos</h3>
+              <h3 className="text-base font-bold text-white">Extrato de Lançamentos ({selectedMonth})</h3>
               <p className="text-xs text-slate-400">
-                {filteredTransacoes.length} de {transacoes.length} transações listadas
+                {filteredTransacoes.length} lançamentos encontrados
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              {/* Search Input */}
-              <div className="relative min-w-[200px]">
+              {/* Search */}
+              <div className="relative min-w-[220px]">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                 <input
                   type="text"
-                  placeholder="Buscar lançamento..."
+                  placeholder="Buscar cliente, projeto ou despesa..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full rounded-xl border border-slate-800 bg-slate-950/80 py-2 pl-9 pr-3 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
@@ -781,10 +744,10 @@ export default function App() {
                 ))}
               </div>
 
-              {/* Export CSV */}
+              {/* Export */}
               <button
                 onClick={exportCSV}
-                className="flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-800/80 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-slate-800 active:scale-95"
+                className="flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-800/80 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-slate-800"
               >
                 <Download className="h-4 w-4 text-emerald-400" />
                 <span>Exportar CSV</span>
@@ -797,8 +760,8 @@ export default function App() {
             <table className="w-full text-left text-xs">
               <thead className="border-b border-slate-800 bg-slate-950/60 uppercase tracking-wider text-slate-400">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">Data</th>
-                  <th className="px-4 py-3 font-semibold">Descrição</th>
+                  <th className="px-4 py-3 font-semibold">Mês / Dia</th>
+                  <th className="px-4 py-3 font-semibold">Descrição / Cliente</th>
                   <th className="px-4 py-3 font-semibold">Categoria</th>
                   <th className="px-4 py-3 font-semibold">Tipo</th>
                   <th className="px-4 py-3 font-semibold text-right">Valor</th>
@@ -807,13 +770,15 @@ export default function App() {
               </thead>
               <tbody className="divide-y divide-slate-800/60">
                 {filteredTransacoes.length > 0 ? (
-                  filteredTransacoes.slice(0, 100).map((t) => (
+                  filteredTransacoes.map((t) => (
                     <tr key={t.id} className="transition hover:bg-slate-800/30">
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-300">{t.data}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-300 font-mono">
+                        {t.mes}{t.dia ? ` • Dia ${t.dia}` : ''}
+                      </td>
                       <td className="px-4 py-3 font-medium text-white">
-                        {t.descricao}
-                        {t.contraparte && (
-                          <span className="block text-[11px] font-normal text-slate-400">{t.contraparte}</span>
+                        <div>{t.descricao}</div>
+                        {t.detalhe && (
+                          <div className="text-[11px] font-normal text-slate-400">{t.detalhe}</div>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -840,7 +805,7 @@ export default function App() {
                         {t.tipo === 'Entrada' ? '+' : '-'} {formatBRL(t.valor)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
-                        <span className="flex items-center gap-1.5 text-slate-400">
+                        <span className="flex items-center gap-1.5 text-slate-300">
                           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
                           <span>{t.status}</span>
                         </span>
@@ -859,47 +824,6 @@ export default function App() {
           </div>
         </section>
       </main>
-
-      {/* Settings Modal */}
-      {isSettingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
-            <h3 className="text-lg font-bold text-white">Configurar Planilha Google Sheets</h3>
-            <p className="mt-1 text-xs text-slate-400">
-              Cole a URL pública ou compartilhada da planilha para alimentar o dashboard em tempo real.
-            </p>
-
-            <div className="mt-4">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">URL da Planilha</label>
-              <input
-                type="url"
-                value={newSheetUrl}
-                onChange={(e) => setNewSheetUrl(e.target.value)}
-                placeholder="https://docs.google.com/spreadsheets/d/..."
-                className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-xs text-white focus:border-emerald-500 focus:outline-none"
-              />
-              <p className="mt-2 text-[11px] text-slate-500">
-                Dica: Certifique-se de que a planilha esteja compartilhada como "Qualquer pessoa com o link pode ler".
-              </p>
-            </div>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                onClick={() => setIsSettingsOpen(false)}
-                className="rounded-xl border border-slate-800 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSaveSettings}
-                className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-emerald-600/20 hover:bg-emerald-500"
-              >
-                Salvar e Sincronizar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
