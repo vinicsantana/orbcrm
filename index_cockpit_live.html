@@ -58,11 +58,12 @@
       border-radius: 9999px;
     }
     .chart-tooltip {
-      position: absolute;
-      pointer-events: none;
-      transition: all 0.1s ease-out;
-      transform: translate(-50%, -110%);
-      z-index: 50;
+      position: fixed !important;
+      pointer-events: none !important;
+      z-index: 999999 !important;
+      transition: opacity 0.12s ease-out;
+      will-change: left, top, opacity;
+      transform: translate(0, 0) !important;
     }
     .orb-help-btn {
       width: 15px;
@@ -611,7 +612,7 @@
 
       <!-- Chart Container (Larger, High Contrast, Comfortable View) -->
       <div class="w-full overflow-x-auto custom-scrollbar relative py-1" id="chartWrapper">
-        <div id="chartTooltip" class="chart-tooltip hidden bg-slate-900/95 text-white border border-slate-700/80 px-3 py-2 rounded-xl text-xs shadow-2xl backdrop-blur-md min-w-[140px] z-50"></div>
+        
         <div id="lineChartContainer"></div>
       </div>
     </section>
@@ -2472,10 +2473,191 @@
     // ==========================================
     // CHART ENGINE (ALWAYS VISIBLE & MULTI-POINT)
     // ==========================================
+    let CHART_SERIES_CACHE = {};
+    let CHART_CONFIG_CACHE = {};
+
+    function positionFixedTooltip(event) {
+      const tooltip = document.getElementById('chartTooltip');
+      if (!tooltip) return;
+      const e = event || window.event;
+      if (!e) return;
+      const clientX = e.clientX;
+      const clientY = e.clientY;
+      const tipWidth = tooltip.offsetWidth || 230;
+      const tipHeight = tooltip.offsetHeight || 160;
+
+      // Smart positioning:
+      // Horizontal: right of cursor by default; flip to left if close to right edge
+      let left = clientX + 16;
+      if (left + tipWidth > window.innerWidth - 12) {
+        left = clientX - tipWidth - 16;
+      }
+      if (left < 12) left = 12;
+
+      // Vertical: vertically centered around cursor, clamped to viewport boundaries
+      let top = clientY - (tipHeight / 2);
+      if (top < 12) top = 12;
+      if (top + tipHeight > window.innerHeight - 12) {
+        top = window.innerHeight - tipHeight - 12;
+      }
+
+      tooltip.style.left = left + 'px';
+      tooltip.style.top = top + 'px';
+    }
+
+    function showPeriodTooltip(event, key, idx) {
+      const tooltip = document.getElementById('chartTooltip');
+      if (!tooltip) return;
+      const item = CHART_SERIES_CACHE[key];
+      if (!item) return;
+
+      const cfg = CHART_CONFIG_CACHE || {};
+      const fmt = (v) => Math.round(v).toLocaleString('pt-BR');
+      const momBadge = (m) => {
+        if (m === null || m === undefined) return '';
+        const isPos = m >= 0;
+        return `<span class="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded ${isPos ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}">${isPos ? '+' : ''}${m.toFixed(1)}%</span>`;
+      };
+
+      let rowsHtml = '';
+      if (cfg.showRec) {
+        rowsHtml += `
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-1.5 text-slate-300">
+              <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+              <span>Receita Real:</span>
+            </div>
+            <div class="text-right font-mono font-bold text-emerald-400">
+              R$ ${fmt(item.rec)}
+              ${momBadge(item.recMom)}
+            </div>
+          </div>`;
+      }
+      if (cfg.showRecPrev) {
+        rowsHtml += `
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-1.5 text-slate-300">
+              <span class="w-2 h-2 rounded-full bg-sky-400"></span>
+              <span>Receita Prevista:</span>
+            </div>
+            <div class="text-right font-mono font-bold text-sky-300">
+              R$ ${fmt(item.recPrev)}
+              ${item.realPct !== null ? `<span class="text-[10px] text-slate-400 ml-1">(${item.realPct}%)</span>` : ''}
+            </div>
+          </div>`;
+      }
+      if (cfg.showMrr) {
+        rowsHtml += `
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-1.5 text-slate-300">
+              <span class="w-2 h-2 rounded-full bg-[#00d2ff]"></span>
+              <span>MRR Recorrente:</span>
+            </div>
+            <div class="text-right font-mono font-bold text-[#00d2ff]">
+              R$ ${fmt(item.mrr)}
+              ${momBadge(item.mrrMom)}
+            </div>
+          </div>`;
+      }
+      if (cfg.showMc) {
+        rowsHtml += `
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-1.5 text-slate-300">
+              <span class="w-2 h-2 rounded-full bg-purple-400"></span>
+              <span>Margem Contrib.:</span>
+            </div>
+            <div class="text-right font-mono font-bold text-purple-300">
+              R$ ${fmt(item.mc)}
+              ${momBadge(item.mcMom)}
+            </div>
+          </div>`;
+      }
+      if (cfg.showDesp) {
+        rowsHtml += `
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-1.5 text-slate-300">
+              <span class="w-2 h-2 rounded-full bg-rose-400"></span>
+              <span>Despesas:</span>
+            </div>
+            <div class="text-right font-mono font-bold text-rose-400">
+              R$ ${fmt(item.desp)}
+            </div>
+          </div>`;
+      }
+      if (cfg.showLucro) {
+        rowsHtml += `
+          <div class="flex items-center justify-between gap-3 pt-1.5 border-t border-slate-800">
+            <div class="flex items-center gap-1.5 text-slate-200 font-semibold">
+              <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+              <span>Lucro EBITDA:</span>
+            </div>
+            <div class="text-right font-mono font-bold ${item.lucro >= 0 ? 'text-blue-300' : 'text-rose-400'}">
+              ${item.lucro < 0 ? '-' : ''}R$ ${fmt(Math.abs(item.lucro))}
+            </div>
+          </div>`;
+      }
+
+      tooltip.innerHTML = `
+        <div class="p-3 min-w-[220px] text-xs space-y-2">
+          <div class="flex items-center justify-between border-b border-slate-700/80 pb-1.5">
+            <span class="font-extrabold text-white text-[13px] tracking-tight">${item.label || key}</span>
+            <span class="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 font-semibold">Consolidado</span>
+          </div>
+          <div class="space-y-1.5">
+            ${rowsHtml || '<span class="text-slate-400 text-[11px]">Nenhuma série ativa selecionada.</span>'}
+          </div>
+        </div>
+      `;
+      tooltip.classList.remove('hidden');
+      positionFixedTooltip(event);
+
+      // Highlight guide line on SVG
+      const guide = document.getElementById('chartGuideLine');
+      if (guide && typeof idx === 'number' && cfg.getX) {
+        const xPos = cfg.getX(idx);
+        guide.setAttribute('x1', xPos);
+        guide.setAttribute('x2', xPos);
+        guide.setAttribute('opacity', '1');
+      }
+    }
+
+    function movePeriodTooltip(event) {
+      positionFixedTooltip(event);
+    }
+
+    function hideChartTooltip() {
+      const tooltip = document.getElementById('chartTooltip');
+      if (tooltip) tooltip.classList.add('hidden');
+      const guide = document.getElementById('chartGuideLine');
+      if (guide) guide.setAttribute('opacity', '0');
+    }
+
+    // Direct single dot hover compatibility
+    function showTooltip(event, label, text) {
+      const tooltip = document.getElementById('chartTooltip');
+      if (!tooltip) return;
+      tooltip.innerHTML = `
+        <div class="p-3 min-w-[180px] text-xs space-y-1">
+          <div class="font-bold text-white text-xs border-b border-slate-700/80 pb-1 flex items-center justify-between">
+            <span>${label}</span>
+            <span class="text-[9px] text-[#00d2ff] font-semibold">Métrica</span>
+          </div>
+          <div class="text-slate-200 font-medium pt-0.5">${text}</div>
+        </div>
+      `;
+      tooltip.classList.remove('hidden');
+      positionFixedTooltip(event);
+    }
+
+    function hideTooltip() {
+      hideChartTooltip();
+    }
+
     function renderLineChart() {
       const container = document.getElementById('lineChartContainer');
-      const list = filterTransactions();
+      if (!container) return;
 
+      const list = lastFilteredList || filterTransactions();
       const showRec = document.getElementById('chkRec').checked;
       const showRecPrev = document.getElementById('chkRecPrev') ? document.getElementById('chkRecPrev').checked : true;
       const showMrr = document.getElementById('chkMrr') ? document.getElementById('chkMrr').checked : false;
@@ -2575,13 +2757,20 @@
       const getX = (idx) => padX + (idx / (n - 1)) * plotW;
       const getY = (val) => padY + plotH - ((val - minVal) / rangeY) * plotH;
 
-      const recPoints = keys.map((k, idx) => ({ x: getX(idx), y: getY(series[k].rec), val: series[k].rec, mom: series[k].recMom, realPct: series[k].realPct, label: k }));
-      const recPrevPoints = keys.map((k, idx) => ({ x: getX(idx), y: getY(series[k].recPrev), val: series[k].recPrev, mom: series[k].recPrevMom, realPct: series[k].realPct, label: k }));
-      const mrrPoints = keys.map((k, idx) => ({ x: getX(idx), y: getY(series[k].mrr), val: series[k].mrr, mom: series[k].mrrMom, label: k }));
-      const despPoints = keys.map((k, idx) => ({ x: getX(idx), y: getY(series[k].desp), val: series[k].desp, label: k }));
-      const mcPoints = keys.map((k, idx) => ({ x: getX(idx), y: getY(series[k].mc), val: series[k].mc, mom: series[k].mcMom, label: k }));
-      const lucroPoints = keys.map((k, idx) => ({ x: getX(idx), y: getY(series[k].lucro), val: series[k].lucro, label: k }));
-      const trendPoints = keys.map((k, idx) => ({ x: getX(idx), y: getY(slope * idx + intercept), val: Math.round(slope * idx + intercept), label: k }));
+      // Cache for tooltip positioning and rendering
+      CHART_SERIES_CACHE = series;
+      CHART_CONFIG_CACHE = {
+        showRec, showRecPrev, showMrr, showDesp, showMc, showLucro, showTrend,
+        getX, plotW, plotH, padX, padY, n
+      };
+
+      const recPoints = keys.map((k, idx) => ({ x: getX(idx), y: getY(series[k].rec), val: series[k].rec, mom: series[k].recMom, realPct: series[k].realPct, label: k, key: k, idx }));
+      const recPrevPoints = keys.map((k, idx) => ({ x: getX(idx), y: getY(series[k].recPrev), val: series[k].recPrev, mom: series[k].recPrevMom, realPct: series[k].realPct, label: k, key: k, idx }));
+      const mrrPoints = keys.map((k, idx) => ({ x: getX(idx), y: getY(series[k].mrr), val: series[k].mrr, mom: series[k].mrrMom, label: k, key: k, idx }));
+      const despPoints = keys.map((k, idx) => ({ x: getX(idx), y: getY(series[k].desp), val: series[k].desp, label: k, key: k, idx }));
+      const mcPoints = keys.map((k, idx) => ({ x: getX(idx), y: getY(series[k].mc), val: series[k].mc, mom: series[k].mcMom, label: k, key: k, idx }));
+      const lucroPoints = keys.map((k, idx) => ({ x: getX(idx), y: getY(series[k].lucro), val: series[k].lucro, label: k, key: k, idx }));
+      const trendPoints = keys.map((k, idx) => ({ x: getX(idx), y: getY(slope * idx + intercept), val: Math.round(slope * idx + intercept), label: k, key: k, idx }));
 
       function makePath(pts) { return pts.map((p, i) => (i === 0 ? 'M' : 'L') + ' ' + p.x + ' ' + p.y).join(' '); }
       function makeAreaPath(pts) {
@@ -2599,8 +2788,15 @@
       }
       let xLabels = keys.map((k, idx) => `<text x="${getX(idx)}" y="${svgH - 8}" text-anchor="middle" fill="#cbd5e1" font-weight="600" font-size="11">${k}</text>`).join('');
 
+      // Full-height column hit areas for instant, smooth period hovering
+      const colHitAreas = keys.map((k, idx) => {
+        const colW = n > 1 ? (plotW / (n - 1)) : plotW;
+        const colX = idx === 0 ? padX : (idx === n - 1 ? getX(idx) - colW / 2 : getX(idx) - colW / 2);
+        return `<rect x="${colX}" y="${padY}" width="${colW}" height="${plotH}" fill="transparent" class="cursor-pointer" onmouseenter="showPeriodTooltip(event, '${k}', ${idx})" onmousemove="movePeriodTooltip(event)" onmouseleave="hideChartTooltip()"/>`;
+      }).join('');
+
       container.innerHTML = `
-        <svg viewBox="0 0 ${svgW} ${svgH}" class="w-full h-64 sm:h-72 text-xs select-none">
+        <svg viewBox="0 0 ${svgW} ${svgH}" class="w-full h-64 sm:h-72 text-xs select-none relative overflow-visible">
           <defs>
             <linearGradient id="recPrevGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.22"/>
@@ -2613,6 +2809,10 @@
           </defs>
           ${gridLines}${xLabels}
           <line x1="${padX}" y1="${getY(0)}" x2="${padX + plotW}" y2="${getY(0)}" stroke="#64748b" stroke-opacity="0.45" stroke-width="1.5"/>
+          
+          <!-- Dynamic Crosshair Guide Line -->
+          <line id="chartGuideLine" x1="0" y1="${padY}" x2="0" y2="${padY + plotH}" stroke="#00d2ff" stroke-width="1.5" stroke-dasharray="3,3" opacity="0" pointer-events="none" class="transition-opacity duration-150"/>
+
           ${showRecPrev ? `<path d="${makeAreaPath(recPrevPoints)}" fill="url(#recPrevGrad)"/>` : ''}
           ${showRec ? `<path d="${makeAreaPath(recPoints)}" fill="url(#recGrad)"/>` : ''}
           ${showTrend ? `<path d="${makePath(trendPoints)}" fill="none" stroke="#f59e0b" stroke-width="2.2" stroke-dasharray="6,4" opacity="0.85"/>` : ''}
@@ -2622,29 +2822,19 @@
           ${showMrr ? `<path d="${makePath(mrrPoints)}" fill="none" stroke="#00d2ff" stroke-width="2.8" stroke-dasharray="6,3" stroke-linecap="round"/>` : ''}
           ${showRecPrev ? `<path d="${makePath(recPrevPoints)}" fill="none" stroke="#38bdf8" stroke-width="2.6" stroke-dasharray="5,3" stroke-linecap="round" stroke-linejoin="round"/>` : ''}
           ${showRec ? `<path d="${makePath(recPoints)}" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>` : ''}
-          ${showRecPrev ? recPrevPoints.map(p => `<circle cx="${p.x}" cy="${p.y}" r="4.2" fill="#38bdf8" stroke="#080c18" stroke-width="1.5" class="cursor-pointer transition-transform hover:scale-125" onmouseover="showTooltip(evt, '${p.label}', 'Receita Projetada: R$ ${Math.round(p.val).toLocaleString('pt-BR')}${momStr(p.mom)}${p.realPct !== null ? ' • Realizado: ' + p.realPct + '%' : ''}')" onmouseout="hideTooltip()"/>`).join('') : ''}
-          ${showRec ? recPoints.map(p => `<circle cx="${p.x}" cy="${p.y}" r="4.5" fill="#10b981" stroke="#ffffff" stroke-width="1.5" class="cursor-pointer transition-transform hover:scale-125" onmouseover="showTooltip(evt, '${p.label}', 'Receita Real: R$ ${Math.round(p.val).toLocaleString('pt-BR')}${momStr(p.mom)}')" onmouseout="hideTooltip()"/>`).join('') : ''}
-          ${showMrr ? mrrPoints.map(p => `<circle cx="${p.x}" cy="${p.y}" r="4.2" fill="#00d2ff" stroke="#ffffff" stroke-width="1.5" class="cursor-pointer transition-transform hover:scale-125" onmouseover="showTooltip(evt, '${p.label}', 'MRR: R$ ${Math.round(p.val).toLocaleString('pt-BR')}${momStr(p.mom)}')" onmouseout="hideTooltip()"/>`).join('') : ''}
-          ${showMc ? mcPoints.map(p => `<circle cx="${p.x}" cy="${p.y}" r="4" fill="#a855f7" stroke="#ffffff" stroke-width="1.5" class="cursor-pointer transition-transform hover:scale-125" onmouseover="showTooltip(evt, '${p.label}', 'Margem Contrib.: R$ ${Math.round(p.val).toLocaleString('pt-BR')}${momStr(p.mom)}')" onmouseout="hideTooltip()"/>`).join('') : ''}
-          ${showDesp ? despPoints.map(p => `<circle cx="${p.x}" cy="${p.y}" r="4.2" fill="#f43f5e" stroke="#ffffff" stroke-width="1.5" class="cursor-pointer transition-transform hover:scale-125" onmouseover="showTooltip(evt, '${p.label}', 'Despesa: R$ ${Math.round(p.val).toLocaleString('pt-BR')}')" onmouseout="hideTooltip()"/>`).join('') : ''}
-          ${showLucro ? lucroPoints.map(p => `<circle cx="${p.x}" cy="${p.y}" r="4" fill="#3b82f6" stroke="#ffffff" stroke-width="1.5" class="cursor-pointer transition-transform hover:scale-125" onmouseover="showTooltip(evt, '${p.label}', 'Lucro EBITDA: R$ ${Math.round(p.val).toLocaleString('pt-BR')}')" onmouseout="hideTooltip()"/>`).join('') : ''}
+          
+          <!-- Column Hover Hit Areas -->
+          ${colHitAreas}
+
+          <!-- Circle Dots (Interactive with Event Handlers) -->
+          ${showRecPrev ? recPrevPoints.map(p => `<circle cx="${p.x}" cy="${p.y}" r="4.2" fill="#38bdf8" stroke="#080c18" stroke-width="1.5" class="cursor-pointer transition-transform hover:scale-150" onmouseenter="showPeriodTooltip(event, '${p.key}', ${p.idx})" onmousemove="movePeriodTooltip(event)" onmouseleave="hideChartTooltip()"/>`).join('') : ''}
+          ${showRec ? recPoints.map(p => `<circle cx="${p.x}" cy="${p.y}" r="4.5" fill="#10b981" stroke="#ffffff" stroke-width="1.5" class="cursor-pointer transition-transform hover:scale-150" onmouseenter="showPeriodTooltip(event, '${p.key}', ${p.idx})" onmousemove="movePeriodTooltip(event)" onmouseleave="hideChartTooltip()"/>`).join('') : ''}
+          ${showMrr ? mrrPoints.map(p => `<circle cx="${p.x}" cy="${p.y}" r="4.2" fill="#00d2ff" stroke="#ffffff" stroke-width="1.5" class="cursor-pointer transition-transform hover:scale-150" onmouseenter="showPeriodTooltip(event, '${p.key}', ${p.idx})" onmousemove="movePeriodTooltip(event)" onmouseleave="hideChartTooltip()"/>`).join('') : ''}
+          ${showMc ? mcPoints.map(p => `<circle cx="${p.x}" cy="${p.y}" r="4" fill="#a855f7" stroke="#ffffff" stroke-width="1.5" class="cursor-pointer transition-transform hover:scale-150" onmouseenter="showPeriodTooltip(event, '${p.key}', ${p.idx})" onmousemove="movePeriodTooltip(event)" onmouseleave="hideChartTooltip()"/>`).join('') : ''}
+          ${showDesp ? despPoints.map(p => `<circle cx="${p.x}" cy="${p.y}" r="4.2" fill="#f43f5e" stroke="#ffffff" stroke-width="1.5" class="cursor-pointer transition-transform hover:scale-150" onmouseenter="showPeriodTooltip(event, '${p.key}', ${p.idx})" onmousemove="movePeriodTooltip(event)" onmouseleave="hideChartTooltip()"/>`).join('') : ''}
+          ${showLucro ? lucroPoints.map(p => `<circle cx="${p.x}" cy="${p.y}" r="4" fill="#3b82f6" stroke="#ffffff" stroke-width="1.5" class="cursor-pointer transition-transform hover:scale-150" onmouseenter="showPeriodTooltip(event, '${p.key}', ${p.idx})" onmousemove="movePeriodTooltip(event)" onmouseleave="hideChartTooltip()"/>`).join('') : ''}
         </svg>
       `;
-    }
-
-    function showTooltip(evt, label, text) {
-      const tooltip = document.getElementById('chartTooltip');
-      if (!tooltip) return;
-      tooltip.classList.remove('hidden');
-      tooltip.innerText = label + ' • ' + text;
-      const rect = document.getElementById('lineChartContainer').getBoundingClientRect();
-      tooltip.style.left = (evt.clientX - rect.left + 10) + 'px';
-      tooltip.style.top = (evt.clientY - rect.top - 25) + 'px';
-    }
-
-    function hideTooltip() {
-      const tooltip = document.getElementById('chartTooltip');
-      if (tooltip) tooltip.classList.add('hidden');
     }
 
     // ==========================================
@@ -4213,5 +4403,6 @@
     checkAuthSession();
   </script>
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"9d88d4b79bf441b5b183a55560abe7f2","r":1,"spa":2}' crossorigin="anonymous"></script>
+<div id="chartTooltip" class="chart-tooltip hidden bg-slate-900/95 text-white border border-slate-700/80 rounded-xl shadow-2xl backdrop-blur-md z-[999999]"></div>
 </body>
 </html>
