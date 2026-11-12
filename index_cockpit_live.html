@@ -96,9 +96,20 @@
       width: min(315px, calc(100vw - 24px));
       pointer-events: auto;
     }
+  
+    /* Sidebar styling */
+    #mainSidebar {
+      background: radial-gradient(circle at top left, #0d1527 0%, #060a14 100%);
+    }
+    .side-nav-active {
+      background: linear-gradient(135deg, rgba(0, 210, 255, 0.16) 0%, rgba(37, 99, 235, 0.16) 100%) !important;
+      border: 1px solid rgba(0, 210, 255, 0.35) !important;
+      color: #ffffff !important;
+      box-shadow: 0 0 12px rgba(0, 210, 255, 0.15) !important;
+    }
   </style>
 </head>
-<body class="bg-[var(--background)] text-[var(--foreground)] antialiased p-3 md:p-4 max-w-7xl mx-auto font-sans text-xs min-h-screen">
+<body class="bg-[var(--background)] text-[var(--foreground)] antialiased font-sans text-xs min-h-screen selection:bg-[#00d2ff]/20 selection:text-[#00d2ff]">
 
   <!-- ========================================== -->
   <!-- 0. AUTH SCREEN (SHOWN WHEN NOT LOGGED IN)  -->
@@ -154,51 +165,189 @@
   <!-- ========================================== -->
   <!-- MAIN COCKPIT DASHBOARD (SHOWN WHEN LOGGED) -->
   <!-- ========================================== -->
-  <div id="cockpitApp" class="hidden">
-    <!-- ========================================== -->
-    <!-- 1. COMPACT TOP EXECUTIVE HEADER -->
-    <!-- ========================================== -->
-    <header class="mb-3 bg-[var(--card)] border border-[var(--border)] rounded-xl px-4 py-2.5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
-      <div class="flex items-center gap-3">
-        <img src="./orb-estrategica-logo-v3.png" alt="Orb Estratégica" class="h-9 w-auto object-contain drop-shadow">
-        <div class="border-l border-[var(--border)] pl-3">
-          <div class="flex items-center gap-2">
-            <h1 class="text-xs font-bold tracking-tight text-white">Torre Executiva & Cockpit</h1>
-            <span class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-[#009ac0]/15 text-[#009ac0] border border-[#009ac0]/30">LIVE</span>
-            <span id="userBadge" class="hidden sm:inline-block px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800/80 text-slate-300 border border-[var(--border)]"></span>
+  <!-- MOBILE OVERLAY BACKDROP -->
+  <div id="sidebarBackdrop" onclick="closeMobileSidebar()" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-40 transition-opacity"></div>
+
+  <div id="cockpitApp" class="hidden min-h-screen flex flex-col lg:flex-row">
+    <!-- MOBILE TOP BAR -->
+    <div class="lg:hidden flex items-center justify-between p-3.5 bg-[#060a14] border-b border-slate-800 sticky top-0 z-30">
+      <div class="flex items-center gap-2.5">
+        <img src="./orb-estrategica-logo-v3.png" alt="Orb Estratégica" class="h-7 w-auto object-contain">
+        <span class="font-bold text-xs text-white">Torre Executiva</span>
+      </div>
+      <button onclick="toggleMobileSidebar()" class="p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+    </div>
+
+    <!-- SIDEBAR (MENU LATERAL FIXO) -->
+    <aside id="mainSidebar" class="hidden lg:flex w-full lg:w-64 shrink-0 border-r border-slate-800/80 p-4 flex-col justify-between z-40 lg:sticky lg:top-0 lg:h-screen overflow-y-auto custom-scrollbar">
+      <div class="space-y-4">
+        <!-- Brand Header -->
+        <div class="flex items-center gap-3 pb-3 border-b border-slate-800/80">
+          <img src="./orb-estrategica-logo-v3.png" alt="Orb Estratégica" class="h-8 w-auto object-contain drop-shadow">
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="font-extrabold text-xs text-white tracking-tight">Orb Estratégica</span>
+              <span class="px-1.5 py-0.2 rounded-full text-[8px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">LIVE</span>
+            </div>
+            <p class="text-[10px] text-[var(--muted-foreground)]">Torre & Cockpit Executivo</p>
           </div>
         </div>
+
+        <!-- Director Session Badge -->
+        <div class="p-2 rounded-xl bg-slate-900/80 border border-slate-800/80 flex items-center gap-2">
+          <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#00d2ff] to-[#2563eb] flex items-center justify-center font-bold text-white text-[11px] shadow-sm">
+            OE
+          </div>
+          <div class="overflow-hidden min-w-0 flex-1">
+            <span class="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Acesso Diretoria</span>
+            <span id="sidebarUserBadge" class="text-[11px] font-semibold text-white truncate block">Diretor Conectado</span>
+          </div>
+        </div>
+
+        <!-- Navigation Menu -->
+        <nav class="space-y-3.5 pt-1">
+          <!-- GROUP 1: VISÃO GERAL -->
+          <div>
+            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 px-2">Visão Geral</div>
+            <div class="space-y-1">
+              <button onclick="switchTab('tab-cockpit')" id="side-btn-cockpit" class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all text-white side-nav-active">
+                <div class="flex items-center gap-2.5">
+                  <svg class="w-4 h-4 text-[#00d2ff]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                  <span>Cockpit & Extrato</span>
+                </div>
+                <span class="text-[9px] px-1.5 py-0.2 rounded bg-[#00d2ff]/20 text-[#00d2ff] font-bold">8 KPIs</span>
+              </button>
+              <button onclick="switchTab('tab-dre')" id="side-btn-dre" class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent">
+                <div class="flex items-center gap-2.5">
+                  <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/></svg>
+                  <span>DRE Gerencial</span>
+                </div>
+                <span class="text-[9px] px-1.5 py-0.2 rounded bg-purple-500/10 text-purple-400 font-bold">EBITDA</span>
+              </button>
+              <button onclick="switchTab('tab-comparativo')" id="side-btn-comparativo" class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent">
+                <div class="flex items-center gap-2.5">
+                  <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+                  <span>Comparativo MoM</span>
+                </div>
+                <span class="text-[9px] px-1.5 py-0.2 rounded bg-sky-500/10 text-sky-400 font-bold">Δ MoM</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- GROUP 2: CLIENTES & CARTEIRA -->
+          <div>
+            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 px-2">Clientes & Receita</div>
+            <div class="space-y-1">
+              <button onclick="switchTab('tab-carteira')" id="side-btn-carteira" class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent">
+                <div class="flex items-center gap-2.5">
+                  <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                  <span>Carteira de Clientes</span>
+                </div>
+                <span class="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 font-bold">Margens</span>
+              </button>
+              <button onclick="switchTab('tab-ghl')" id="side-btn-ghl" class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent">
+                <div class="flex items-center gap-2.5">
+                  <svg class="w-4 h-4 text-[#00d2ff]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                  <span>Orb CRM</span>
+                </div>
+                <span class="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-bold">33 Contas</span>
+              </button>
+              <button onclick="switchTab('tab-inadimplencia')" id="side-btn-inadimplencia" class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent">
+                <div class="flex items-center gap-2.5">
+                  <svg class="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  <span>Inadimplência & Churn</span>
+                </div>
+                <span id="sideChurnPill" class="text-[9px] px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-400 font-bold">Audit</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- GROUP 3: ESTRATÉGICO -->
+          <div>
+            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 px-2">Estratégico</div>
+            <div class="space-y-1">
+              <button onclick="switchTab('tab-sociedade')" id="side-btn-sociedade" class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent">
+                <div class="flex items-center gap-2.5">
+                  <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  <span>Sociedade & PPR 12M</span>
+                </div>
+                <span class="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 font-bold">30%</span>
+              </button>
+              <button onclick="switchTab('tab-centros')" id="side-btn-centros" class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent">
+                <div class="flex items-center gap-2.5">
+                  <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+                  <span>Centros de Custo</span>
+                </div>
+                <span class="text-[9px] px-1.5 py-0.2 rounded bg-teal-500/10 text-teal-400 font-bold">Despesas</span>
+              </button>
+            </div>
+          </div>
+        </nav>
       </div>
 
-      <!-- Live Sync Indicators & Actions -->
-      <div class="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
-        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-[11px] font-medium">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span id="sheetSyncStatus">Sheets: Sincronizado</span>
+      <!-- Bottom Sidebar Actions -->
+      <div class="pt-4 border-t border-slate-800/80 space-y-2 text-xs">
+        <div class="flex items-center justify-between text-[10px] text-slate-400">
+          <span class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            Planilha Google
+          </span>
+          <span id="sideSyncTime" class="text-slate-300 font-mono">Tempo Real</span>
         </div>
-        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#009ac0]/10 border border-[#009ac0]/30 text-[#009ac0] text-[11px] font-medium">
-          <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-          <span id="ghlSyncStatus">Orb CRM: 31 Contas</span>
-          <span id="churnHeaderBadge" class="hidden sm:inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/10 text-rose-500 border border-rose-500/20 cursor-pointer" onclick="switchTab('tab-inadimplencia')"><span class="inline-block w-1.5 h-1.5 rounded-full bg-rose-400 mr-1"></span>Churn: 17.3% (-R$ 1.462/mês)</span>
+        <div class="grid grid-cols-2 gap-1.5">
+          <button onclick="refreshAllData()" class="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold transition-all border border-slate-700">
+            <svg class="w-3.5 h-3.5 text-[#00d2ff]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            <span>Sync</span>
+          </button>
+          <button onclick="handleLogout()" class="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-semibold transition-all border border-rose-500/20">
+            <span>Sair</span>
+          </button>
         </div>
-        <button type="button" onclick="openGlossaryModal()" id="btnGlossary" class="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#00d2ff]/30 bg-[#00d2ff]/10 hover:bg-[#00d2ff]/20 text-[#00d2ff] text-[11px] font-semibold transition-all whitespace-nowrap" title="Ver racional e fórmula de todas as métricas">
-          <span class="w-3.5 h-3.5 rounded-full bg-[#00d2ff]/20 border border-[#00d2ff]/50 inline-flex items-center justify-center text-[9px] font-black">?</span>
-          <span class="hidden md:inline">Racional</span>
-        </button>
-        <button onclick="refreshAllData()" id="btnSync" class="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gradient-to-r from-[#00d2ff] via-[#2563eb] to-[#8b5cf6] hover:opacity-95 text-white text-[11px] font-semibold shadow-md shadow-[#009ac0]/25 transition-all active:scale-95">
-          <svg id="syncIcon" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-          </svg>
-          <span id="syncText">Sincronizar</span>
-        </button>
-        <button onclick="handleLogout()" class="px-2.5 py-1 rounded-lg border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-semibold transition-all" title="Encerrar Sessão">
-          Sair
-        </button>
       </div>
-    </header>
+    </aside>
 
-    <!-- ========================================== -->
-    <!-- 2. TIME FILTER SEGMENTED BAR -->
+    <!-- ÁREA DE CONTEÚDO PRINCIPAL (MAIN WORKSPACE) -->
+    <main class="flex-1 min-w-0 p-3 md:p-5 max-w-7xl mx-auto w-full space-y-3.5">
+      <!-- STICKY TOPBAR HEADER -->
+      <header class="sticky top-0 z-20 bg-[var(--background)]/95 backdrop-blur-md border border-[var(--border)] rounded-xl px-4 py-2.5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+        <div class="flex items-center gap-3">
+          <div>
+            <div class="flex items-center gap-2">
+              <span id="currentTabTitle" class="text-sm font-bold tracking-tight text-white">Cockpit & Extrato de Lançamentos</span>
+              <span id="userBadge" class="hidden sm:inline-block px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800/80 text-slate-300 border border-[var(--border)]"></span>
+            </div>
+            <p id="currentTabSubtitle" class="text-[11px] text-[var(--muted-foreground)]">Visão unificada de fluxo de caixa, rentabilidade e lançamentos auditados</p>
+          </div>
+        </div>
+
+        <!-- Right Quick Stats & Controls -->
+        <div class="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end flex-wrap">
+          <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-mono">
+            <span>Rec: <strong id="topbarRecReal">R$ 0</strong></span>
+          </div>
+          <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#009ac0]/10 border border-[#009ac0]/30 text-[#00d2ff] text-[11px] font-mono">
+            <span>Lucro: <strong id="topbarLucroOp">R$ 0</strong></span>
+          </div>
+          <button type="button" onclick="openGlossaryModal()" id="btnGlossary" class="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#00d2ff]/30 bg-[#00d2ff]/10 hover:bg-[#00d2ff]/20 text-[#00d2ff] text-[11px] font-semibold transition-all" title="Ver racional das métricas">
+            <span class="w-3.5 h-3.5 rounded-full bg-[#00d2ff]/20 border border-[#00d2ff]/50 inline-flex items-center justify-center text-[9px] font-black">?</span>
+            <span class="hidden md:inline">Racional</span>
+          </button>
+          <button onclick="refreshAllData()" id="btnSync" class="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gradient-to-r from-[#00d2ff] via-[#2563eb] to-[#8b5cf6] text-white text-[11px] font-semibold shadow-md shadow-[#009ac0]/25 transition-all active:scale-95">
+            <svg id="syncIcon" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+            <span id="syncText">Sincronizar</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- HIDDEN SYNC STATUS ELEMENTS TO PRESERVE JS HOOKS -->
+      <div class="hidden">
+        <span id="sheetSyncStatus"></span>
+        <span id="ghlSyncStatus"></span>
+        <span id="churnHeaderBadge"></span>
+      </div>
+<!-- 2. TIME FILTER SEGMENTED BAR -->
     <!-- ========================================== -->
     <section class="mb-3 bg-[var(--card)] border border-[var(--border)] rounded-xl p-2.5 shadow-sm space-y-2">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -261,7 +410,12 @@
     </section>
 
     <!-- ========================================== -->
-    <!-- 4. UNIFIED 8-CARD EXECUTIVE KPI GRID (4+4) -->
+    <!-- ========================================== -->
+    <!-- COCKPIT HERO: 8-CARD KPI GRID + TRENDLINE CHART -->
+    <!-- VISIBLE ONLY ON COCKPIT & EXTRATO TAB -->
+    <!-- ========================================== -->
+    <div id="cockpitHeroSection" class="space-y-3">
+<!-- 4. UNIFIED 8-CARD EXECUTIVE KPI GRID (4+4) -->
     <!-- ========================================== -->
     <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 mb-2.5">
       <!-- 1. Receita Real & Prevista -->
@@ -462,6 +616,8 @@
       </div>
     </section>
 
+        </div>
+
     <!-- 6. CLEAN TABS NAVIGATION -->
     <!-- ========================================== -->
     <div class="flex border-b border-[var(--border)] mb-3 gap-5 overflow-x-auto text-xs custom-scrollbar">
@@ -496,7 +652,13 @@
       <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm">
         <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 mb-3">
           <div class="flex items-center gap-2 flex-wrap">
-            <span class="font-bold text-xs text-[var(--foreground)]">Lançamentos no Período</span>
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-xs text-[var(--foreground)]">Lançamentos no Período</span>
+              <button type="button" onclick="toggleCockpitHeroVisibility()" id="btnToggleHero" class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 flex items-center gap-1 transition-all" title="Ocultar ou exibir os 8 cards e gráfico de tendência">
+                <svg id="heroChevron" class="w-3 h-3 text-[#00d2ff] transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                <span id="heroToggleLabel">Visualização Focada</span>
+              </button>
+            </div>
             <div class="flex items-center gap-1 bg-[var(--background)] p-0.5 rounded-lg border border-[var(--border)]">
               <button onclick="setExtratoTypeFilter('all')" id="btnExtratoAll" class="px-2.5 py-1 rounded text-[10px] font-bold bg-[#009ac0] text-white">Todos</button>
               <button onclick="setExtratoTypeFilter('revenue')" id="btnExtratoRec" class="px-2.5 py-1 rounded text-[10px] font-bold text-[var(--muted-foreground)] hover:text-white">Entradas (+)</button>
@@ -708,18 +870,73 @@
 
         <div class="overflow-x-auto custom-scrollbar">
           <table class="w-full text-xs text-left border-collapse whitespace-nowrap">
-            <thead class="border-b border-[var(--border)] text-[var(--muted-foreground)] text-[11px]">
+            <thead class="sticky top-0 z-10 bg-[#0f172a] border-b border-slate-700/80 text-slate-300 select-none shadow-sm text-[11px]">
               <tr>
-                <th class="py-2 px-2.5 font-semibold">Cliente</th>
-                <th class="py-2 px-2.5 font-semibold text-right">Receita</th>
-                <th class="py-2 px-2.5 font-semibold text-right">Share (%)</th>
-                <th class="py-2 px-2.5 font-semibold text-right">vs Anterior</th>
-                <th class="py-2 px-2.5 font-semibold text-right">Custo Direto<button type="button" class="orb-help-btn" data-help="custo_direto">?</button></th>
-                <th class="py-2 px-2.5 font-semibold text-right">Rateio Var.<button type="button" class="orb-help-btn" data-help="rateio_var">?</button></th>
-                <th class="py-2 px-2.5 font-semibold text-right text-purple-300">Margem Contrib. (%)<button type="button" class="orb-help-btn" data-help="mc_cliente">?</button></th>
-                <th class="py-2 px-2.5 font-semibold text-right">Rateio Fixo<button type="button" class="orb-help-btn" data-help="rateio_fixo">?</button></th>
-                <th class="py-2 px-2.5 font-semibold text-right text-[#00d2ff]">Margem Líquida (%)<button type="button" class="orb-help-btn" data-help="margem_liq_cliente">?</button></th>
-                <th class="py-2 px-2.5 font-semibold text-center">Status Pgto</th>
+                <th onclick="toggleCarteiraSort('name')" class="py-2.5 px-2.5 font-bold cursor-pointer hover:bg-slate-800/80 hover:text-white transition-colors" title="Ordenar por Nome do Cliente">
+                  <div class="flex items-center gap-1.5">
+                    <span>Cliente</span>
+                    <span id="sort-cart-name" class="text-[11px] text-slate-500 opacity-40">↕</span>
+                  </div>
+                </th>
+                <th onclick="toggleCarteiraSort('rev')" class="py-2.5 px-2.5 font-bold text-right cursor-pointer hover:bg-slate-800/80 hover:text-white transition-colors" title="Ordenar por Receita">
+                  <div class="flex items-center justify-end gap-1.5">
+                    <span>Receita</span>
+                    <span id="sort-cart-rev" class="text-[11px] text-[#00d2ff] font-bold">▼</span>
+                  </div>
+                </th>
+                <th onclick="toggleCarteiraSort('sharePct')" class="py-2.5 px-2.5 font-bold text-right cursor-pointer hover:bg-slate-800/80 hover:text-white transition-colors" title="Ordenar por Share %">
+                  <div class="flex items-center justify-end gap-1.5">
+                    <span>Share (%)</span>
+                    <span id="sort-cart-sharePct" class="text-[11px] text-slate-500 opacity-40">↕</span>
+                  </div>
+                </th>
+                <th onclick="toggleCarteiraSort('delta')" class="py-2.5 px-2.5 font-bold text-right cursor-pointer hover:bg-slate-800/80 hover:text-white transition-colors" title="Ordenar por vs Anterior">
+                  <div class="flex items-center justify-end gap-1.5">
+                    <span>vs Anterior</span>
+                    <span id="sort-cart-delta" class="text-[11px] text-slate-500 opacity-40">↕</span>
+                  </div>
+                </th>
+                <th onclick="toggleCarteiraSort('directCost')" class="py-2.5 px-2.5 font-bold text-right cursor-pointer hover:bg-slate-800/80 hover:text-white transition-colors" title="Ordenar por Custo Direto">
+                  <div class="flex items-center justify-end gap-1.5">
+                    <span>Custo Direto</span>
+                    <button type="button" class="orb-help-btn" data-help="custo_direto" onclick="event.stopPropagation()">?</button>
+                    <span id="sort-cart-directCost" class="text-[11px] text-slate-500 opacity-40">↕</span>
+                  </div>
+                </th>
+                <th onclick="toggleCarteiraSort('rateioVar')" class="py-2.5 px-2.5 font-bold text-right cursor-pointer hover:bg-slate-800/80 hover:text-white transition-colors" title="Ordenar por Rateio Variável">
+                  <div class="flex items-center justify-end gap-1.5">
+                    <span>Rateio Var.</span>
+                    <button type="button" class="orb-help-btn" data-help="rateio_var" onclick="event.stopPropagation()">?</button>
+                    <span id="sort-cart-rateioVar" class="text-[11px] text-slate-500 opacity-40">↕</span>
+                  </div>
+                </th>
+                <th onclick="toggleCarteiraSort('mcPct')" class="py-2.5 px-2.5 font-bold text-right text-purple-300 cursor-pointer hover:bg-slate-800/80 hover:text-purple-200 transition-colors" title="Ordenar por Margem de Contribuição %">
+                  <div class="flex items-center justify-end gap-1.5">
+                    <span>Margem Contrib. (%)</span>
+                    <button type="button" class="orb-help-btn" data-help="mc_cliente" onclick="event.stopPropagation()">?</button>
+                    <span id="sort-cart-mcPct" class="text-[11px] text-slate-500 opacity-40">↕</span>
+                  </div>
+                </th>
+                <th onclick="toggleCarteiraSort('rateioFix')" class="py-2.5 px-2.5 font-bold text-right cursor-pointer hover:bg-slate-800/80 hover:text-white transition-colors" title="Ordenar por Rateio Fixo">
+                  <div class="flex items-center justify-end gap-1.5">
+                    <span>Rateio Fixo</span>
+                    <button type="button" class="orb-help-btn" data-help="rateio_fixo" onclick="event.stopPropagation()">?</button>
+                    <span id="sort-cart-rateioFix" class="text-[11px] text-slate-500 opacity-40">↕</span>
+                  </div>
+                </th>
+                <th onclick="toggleCarteiraSort('liqPct')" class="py-2.5 px-2.5 font-bold text-right text-[#00d2ff] cursor-pointer hover:bg-slate-800/80 hover:text-[#00e5ff] transition-colors" title="Ordenar por Margem Líquida %">
+                  <div class="flex items-center justify-end gap-1.5">
+                    <span>Margem Líquida (%)</span>
+                    <button type="button" class="orb-help-btn" data-help="margem_liq_cliente" onclick="event.stopPropagation()">?</button>
+                    <span id="sort-cart-liqPct" class="text-[11px] text-slate-500 opacity-40">↕</span>
+                  </div>
+                </th>
+                <th onclick="toggleCarteiraSort('status')" class="py-2.5 px-2.5 font-bold text-center cursor-pointer hover:bg-slate-800/80 hover:text-white transition-colors" title="Ordenar por Status de Pagamento">
+                  <div class="flex items-center justify-center gap-1.5">
+                    <span>Status Pgto</span>
+                    <span id="sort-cart-status" class="text-[11px] text-slate-500 opacity-40">↕</span>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody class="divide-y divide-[var(--border)]" id="carteiraTableBody"></tbody>
@@ -1032,7 +1249,10 @@
     </div>
   </div>
 
-  <script>
+  
+    </main>
+  </div>
+<script>
     // ==========================================
     // GLOSSARY & EXPLANATORY BALLOONS SYSTEM
     // ==========================================
@@ -1535,6 +1755,8 @@
       const userBadge = document.getElementById('userBadge');
       if (userBadge) {
         userBadge.innerText = email === 'vinicsantana2008@gmail.com' ? 'Vinicius Santana (CSTO)' : (email === 'raiannifilgueiras@gmail.com' ? 'Raianni Filgueiras (CEO)' : email);
+        const sideBadge = document.getElementById('sidebarUserBadge');
+        if (sideBadge) sideBadge.innerText = userBadge.innerText;
       }
       loadData();
     }
@@ -2073,6 +2295,13 @@
       const cmpCtx = getComparisonContext();
       const prev = cmpCtx.prevList ? computePeriodMetrics(cmpCtx.prevList, cmpCtx.prevMrrMonth) : null;
       const vsLbl = prev ? cmpCtx.prevLabel : '';
+
+      try {
+        const topRec = document.getElementById('topbarRecReal');
+        if (topRec) topRec.innerText = 'R$ ' + Math.round(curr.recReal).toLocaleString('pt-BR');
+        const topLucro = document.getElementById('topbarLucroOp');
+        if (topLucro) topLucro.innerText = (curr.lucroOperacional < 0 ? '- ' : '') + 'R$ ' + Math.abs(Math.round(curr.lucroOperacional)).toLocaleString('pt-BR');
+      } catch(e) {}
 
       // 1. Receita
       document.getElementById('kpiRecReal').innerText = 'R$ ' + Math.round(curr.recReal).toLocaleString('pt-BR');
@@ -3216,7 +3445,44 @@
       }
 
       const q = (document.getElementById('carteiraSearchInput')?.value || '').toLowerCase();
-      const filtered = q ? portfolioArr.filter(c => c.name.toLowerCase().includes(q)) : portfolioArr;
+      let filtered = q ? portfolioArr.filter(c => c.name.toLowerCase().includes(q)) : [...portfolioArr];
+
+      // Sort filtered clients according to carteiraSortCol and carteiraSortDir
+      filtered.sort((a, b) => {
+        let valA, valB;
+        switch (carteiraSortCol) {
+          case 'name':
+            return carteiraSortDir === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+          case 'sharePct':
+            valA = a.sharePct || 0; valB = b.sharePct || 0; break;
+          case 'delta':
+            valA = (a.prevRev !== null) ? (a.rev - a.prevRev) : (a.rev);
+            valB = (b.prevRev !== null) ? (b.rev - b.prevRev) : (b.rev);
+            break;
+          case 'directCost':
+            valA = a.directCost || 0; valB = b.directCost || 0; break;
+          case 'rateioVar':
+            valA = a.rateioVar || 0; valB = b.rateioVar || 0; break;
+          case 'mcPct':
+            valA = a.mcPct || 0; valB = b.mcPct || 0; break;
+          case 'rateioFix':
+            valA = a.rateioFix || 0; valB = b.rateioFix || 0; break;
+          case 'liqPct':
+            valA = a.liqPct || 0; valB = b.liqPct || 0; break;
+          case 'status':
+            valA = (a.real > 0 && a.pending === 0) ? 2 : (a.real > 0 ? 1 : 0);
+            valB = (b.real > 0 && b.pending === 0) ? 2 : (b.real > 0 ? 1 : 0);
+            break;
+          case 'rev':
+          default:
+            valA = a.rev || 0; valB = b.rev || 0; break;
+        }
+        if (carteiraSortDir === 'asc') {
+          return valA > valB ? 1 : (valA < valB ? -1 : 0);
+        } else {
+          return valA < valB ? 1 : (valA > valB ? -1 : 0);
+        }
+      });
 
       if (filtered.length === 0) {
         tbody.innerHTML = '<tr><td colspan="10" class="py-6 text-center text-xs text-[var(--muted-foreground)]">Nenhum cliente encontrado no período selecionado.</td></tr>';
@@ -3768,22 +4034,164 @@
     // ==========================================
     // UI TAB SWITCHER
     // ==========================================
+    // ==========================================
+    // CARTEIRA DE CLIENTES SORTING STATE & LOGIC
+    // ==========================================
+    let carteiraSortCol = 'rev';
+    let carteiraSortDir = 'desc';
+
+    function toggleCarteiraSort(col) {
+      if (carteiraSortCol === col) {
+        carteiraSortDir = carteiraSortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        carteiraSortCol = col;
+        carteiraSortDir = (col === 'name') ? 'asc' : 'desc';
+      }
+      updateCarteiraSortIcons();
+      renderClientPortfolioTab();
+    }
+
+    function updateCarteiraSortIcons() {
+      const cols = ['name', 'rev', 'sharePct', 'delta', 'directCost', 'rateioVar', 'mcPct', 'rateioFix', 'liqPct', 'status'];
+      cols.forEach(c => {
+        const icon = document.getElementById('sort-cart-' + c);
+        if (!icon) return;
+        if (c === carteiraSortCol) {
+          icon.textContent = carteiraSortDir === 'asc' ? '▲' : '▼';
+          icon.className = 'text-[11px] text-[#00d2ff] font-bold';
+        } else {
+          icon.textContent = '↕';
+          icon.className = 'text-[11px] text-slate-500 opacity-40';
+        }
+      });
+    }
+
+    // ==========================================
+    // MOBILE SIDEBAR CONTROLS
+    // ==========================================
+    function toggleMobileSidebar() {
+      const sidebar = document.getElementById('mainSidebar');
+      const backdrop = document.getElementById('sidebarBackdrop');
+      if (!sidebar) return;
+      const isHidden = sidebar.classList.contains('hidden');
+      if (isHidden) {
+        sidebar.classList.remove('hidden');
+        sidebar.classList.add('fixed', 'inset-y-0', 'left-0', 'z-50', 'w-72', 'shadow-2xl');
+        if (backdrop) backdrop.classList.remove('hidden');
+      } else {
+        closeMobileSidebar();
+      }
+    }
+
+    function closeMobileSidebar() {
+      const sidebar = document.getElementById('mainSidebar');
+      const backdrop = document.getElementById('sidebarBackdrop');
+      if (!sidebar) return;
+      sidebar.classList.remove('fixed', 'inset-y-0', 'left-0', 'z-50', 'w-72', 'shadow-2xl');
+      sidebar.classList.add('hidden', 'lg:flex');
+      if (backdrop) backdrop.classList.add('hidden');
+    }
+
+    // ==========================================
+    // TOGGLE COCKPIT HERO VISIBILITY (FOCUSED VIEW)
+    // ==========================================
+    function toggleCockpitHeroVisibility() {
+      const hero = document.getElementById('cockpitHeroSection');
+      const chevron = document.getElementById('heroChevron');
+      const label = document.getElementById('heroToggleLabel');
+      if (!hero) return;
+      if (hero.classList.contains('hidden')) {
+        hero.classList.remove('hidden');
+        if (chevron) chevron.classList.remove('rotate-180');
+        if (label) label.innerText = 'Visualização Focada';
+      } else {
+        hero.classList.add('hidden');
+        if (chevron) chevron.classList.add('rotate-180');
+        if (label) label.innerText = 'Expandir Cockpit';
+      }
+    }
+
+    // ==========================================
+    // UI TAB SWITCHER & EXECUTIVE ROUTING
+    // ==========================================
+    const TAB_INFO = {
+      'tab-cockpit': { title: 'Cockpit & Extrato de Lançamentos', subtitle: 'Visão executiva de fluxo de caixa, rentabilidade operacional e lançamentos auditados' },
+      'tab-dre': { title: 'DRE Gerencial Completa', subtitle: 'Demonstração do Resultado do Período: Receitas, Deduções, Margem de Contribuição e Lucro Retido' },
+      'tab-comparativo': { title: 'Comparativo MoM (Mês a Mês)', subtitle: 'Análise detalhada de variações nominais e percentuais contra o período anterior' },
+      'tab-carteira': { title: 'Carteira de Clientes & Margens Unitárias', subtitle: 'Rentabilidade cliente a cliente com custos diretos identificados e rateio de variáveis/fixos' },
+      'tab-sociedade': { title: 'Sociedade & PPR 12M', subtitle: 'Acompanhamento do ciclo de 12 meses de retenção de capital e simulador societário' },
+      'tab-ghl': { title: 'Orb CRM (GoHighLevel)', subtitle: 'Sincronização e auditoria das 33 subcontas ativas e conciliação de faturamento' },
+      'tab-centros': { title: 'Centros de Custo', subtitle: 'Decomposição de despesas por categoria operacional e natureza de custo' },
+      'tab-inadimplencia': { title: 'Inadimplência & Churn', subtitle: 'Régua de cobrança, clientes pendentes e auditoria de cancelamentos/MRR perdido' }
+    };
+
     function switchTab(tabId) {
-      document.querySelectorAll('#tab-cockpit, #tab-dre, #tab-comparativo, #tab-carteira, #tab-sociedade, #tab-ghl, #tab-centros, #tab-inadimplencia').forEach(el => el.classList.add('hidden'));
-      document.querySelectorAll('#btn-cockpit, #btn-dre, #btn-comparativo, #btn-carteira, #btn-sociedade, #btn-ghl, #btn-centros, #btn-inadimplencia').forEach(btn => {
-        btn.classList.remove('tab-active');
-        btn.classList.add('text-[var(--muted-foreground)]');
+      const tabIds = ['tab-cockpit', 'tab-dre', 'tab-comparativo', 'tab-carteira', 'tab-sociedade', 'tab-ghl', 'tab-centros', 'tab-inadimplencia'];
+      
+      // 1. Hide all tabs
+      tabIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
       });
 
+      // 2. Show target tab
       const targetEl = document.getElementById(tabId);
       if (targetEl) targetEl.classList.remove('hidden');
 
-      const btnId = tabId.replace('tab-', 'btn-');
-      const activeBtn = document.getElementById(btnId);
-      if (activeBtn) {
-        activeBtn.classList.add('tab-active');
-        activeBtn.classList.remove('text-[var(--muted-foreground)]');
+      // 3. SHOW / HIDE HERO SECTION (THE 8 KPI CARDS + TRENDLINE CHART)
+      // When on tab-cockpit, show the 8 KPI cards and chart.
+      // When on other tabs (DRE, Carteira, Comparativo, etc.), HIDE the hero cards so the tab content starts IMMEDIATELY at the top of the viewport! No more 1500px scrolling!
+      const heroSec = document.getElementById('cockpitHeroSection');
+      if (heroSec) {
+        if (tabId === 'tab-cockpit') {
+          heroSec.classList.remove('hidden');
+        } else {
+          heroSec.classList.add('hidden');
+        }
       }
+
+      // 4. Update horizontal tabs style
+      tabIds.forEach(id => {
+        const btnId = id.replace('tab-', 'btn-');
+        const btn = document.getElementById(btnId);
+        if (btn) {
+          if (id === tabId) {
+            btn.classList.add('tab-active');
+            btn.classList.remove('text-[var(--muted-foreground)]');
+          } else {
+            btn.classList.remove('tab-active');
+            btn.classList.add('text-[var(--muted-foreground)]');
+          }
+        }
+      });
+
+      // 5. Update Sidebar navigation active state
+      tabIds.forEach(id => {
+        const sideBtnId = 'side-' + id.replace('tab-', 'btn-');
+        const sideBtn = document.getElementById(sideBtnId);
+        if (sideBtn) {
+          if (id === tabId) {
+            sideBtn.className = 'w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all text-white side-nav-active';
+          } else {
+            sideBtn.className = 'w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-900/60 border border-transparent';
+          }
+        }
+      });
+
+      // 6. Update breadcrumb and header title
+      const info = TAB_INFO[tabId];
+      if (info) {
+        const titleEl = document.getElementById('currentTabTitle');
+        const subEl = document.getElementById('currentTabSubtitle');
+        if (titleEl) titleEl.innerText = info.title;
+        if (subEl) subEl.innerText = info.subtitle;
+      }
+
+      // 7. Close mobile sidebar if open
+      closeMobileSidebar();
+
+      // 8. Smooth scroll to top of page
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     function toggleAlertsDrawer() {
